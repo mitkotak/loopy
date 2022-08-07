@@ -234,6 +234,26 @@ def test_int_pow(dtype, rtol):
                                rtol=rtol)
 
 
+@pytest.mark.parametrize("dtype", [np.complex64, np.complex128,
+                                   np.float32, np.float64])
+@pytest.mark.parametrize("func", ["abs", "sqrt",
+                                  "sin",  "cos", "tan",
+                                  "sinh",  "cosh", "tanh",
+                                  "exp", "log", "log10"])
+def test_math_functions(dtype, func):
+    rng = np.random.default_rng(seed=0)
+    knl = lp.make_kernel(
+        "{[i]: 0 <= i < N}",
+        f"""
+        y[i] = {func}(x[i])
+        """,
+        target=lp.PyCudaTarget())
+    x = get_random_array(rng, (42,), np.dtype(dtype))
+    _, (out,) = knl(x=x)
+    np.testing.assert_allclose(getattr(np, func)(x),
+                               out, rtol=1e-6)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
