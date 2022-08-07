@@ -32,6 +32,9 @@ import genpy
 from loopy.target.cuda import (CudaTarget, CudaCASTBuilder,
                                ExpressionToCudaCExpressionMapper)
 from loopy.target.python import PythonASTBuilderBase
+from loopy.target.c import CMathCallable
+from loopy.diagnostic import LoopyError
+from loopy.types import NumpyType
 
 import logging
 logger = logging.getLogger(__name__)
@@ -50,6 +53,64 @@ def pycuda_preamble_generator(preamble_info):
         yield ("03_include_complex_header", """
             #include <pycuda-complex.hpp>
             """)
+
+# }}}
+
+
+# {{{ PyCudaCallable
+
+class PyCudaCallable(CMathCallable):
+    def with_types(self, arg_id_to_dtype, callables_table):
+        if any(dtype.is_complex() for dtype in arg_id_to_dtype.values()):
+            if self.name in ["abs", "real", "imag"]:
+                if not (set(arg_id_to_dtype) <= {0, -1}):
+                    raise LoopyError(f"'{self.name}' takes only one argument")
+                if arg_id_to_dtype.get(0) is None:
+                    # not specialized enough
+                    return (self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                            callables_table)
+                else:
+                    real_dtype = np.empty(0,
+                                          arg_id_to_dtype[0].numpy_dtype).real.dtype
+                    arg_id_to_dtype = arg_id_to_dtype.copy()
+                    arg_id_to_dtype[-1] = NumpyType(real_dtype)
+                    return (self.copy(arg_id_to_dtype=arg_id_to_dtype,
+                                      name_in_target=self.name),
+                            callables_table)
+            elif self.name in ["sqrt", "conj",
+                               "sin",  "cos", "tan",
+                               "sinh",  "cosh", "tanh", "exp",
+                               "log", "log10"]:
+                if not (set(arg_id_to_dtype) <= {0, -1}):
+                    raise LoopyError(f"'{self.name}' takes only one argument")
+                if arg_id_to_dtype.get(0) is None:
+                    # not specialized enough
+                    return (self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                            callables_table)
+                else:
+                    arg_id_to_dtype = arg_id_to_dtype.copy()
+                    arg_id_to_dtype[-1] = arg_id_to_dtype[0]
+                    return (self.copy(arg_id_to_dtype=arg_id_to_dtype,
+                                      name_in_target=self.name),
+                            callables_table)
+            else:
+                raise LoopyError(f"'{self.name}' does not take complex"
+                                 " arguments.")
+        else:
+            if self.name in ["real", "imag", "conj"]:
+                if arg_id_to_dtype.get(0):
+                    raise NotImplementedError("'{self.name}' for real arguments"
+                                              ", not yet supported.")
+            return super().with_types(arg_id_to_dtype, callables_table)
+
+
+def get_pycuda_callables():
+    cmath_ids = ["abs", "acos", "asin", "atan", "cos", "cosh", "sin",
+                 "sinh", "pow", "atan2", "tanh", "exp", "log", "log10",
+                 "sqrt", "ceil", "floor", "max", "min", "fmax", "fmin",
+                 "fabs", "tan", "erf", "erfc", "isnan", "real", "imag",
+                 "conj"]
+    return {id_: PyCudaCallable(id_) for id_ in cmath_ids}
 
 # }}}
 
@@ -332,6 +393,12 @@ class PyCudaCASTBuilder(CudaCASTBuilder):
     def preamble_generators(self):
         return ([pycuda_preamble_generator]
                 + super().preamble_generators())
+
+    @property
+    def known_callables(self):
+        callables = super().known_callables
+        callables.update(get_pycuda_callables())
+        return callables
 
     # }}}
 
