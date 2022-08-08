@@ -167,6 +167,7 @@ class PyCudaExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         gen.add_to_preamble("import pycuda.driver as _lpy_cuda")
         gen.add_to_preamble("import pycuda.gpuarray as _lpy_cuda_array")
         gen.add_to_preamble("import pycuda.tools as _lpy_cuda_tools")
+        gen.add_to_preamble("import struct as _lpy_struct")
         from loopy.target.c.c_execution import DEF_EVEN_DIV_FUNCTION
         gen.add_to_preamble(DEF_EVEN_DIV_FUNCTION)
 
@@ -247,29 +248,6 @@ class _KernelInfo:
 
 # {{{ kernel executor
 
-
-def _get_arg_dtypes(knl, subkernel_name):
-    from loopy.schedule.tools import get_subkernel_arg_info
-    from loopy.kernel.data import ValueArg
-
-    skai = get_subkernel_arg_info(knl, subkernel_name)
-    arg_dtypes = []
-    for arg in skai.passed_names:
-        if arg in skai.passed_inames:
-            arg_dtypes.append(knl.index_dtype.numpy_dtype)
-        elif arg in skai.passed_temporaries:
-            arg_dtypes.append("P")
-        else:
-            assert arg in knl.arg_dict
-            if isinstance(knl.arg_dict[arg], ValueArg):
-                arg_dtypes.append(knl.arg_dict[arg].dtype.numpy_dtype)
-            else:
-                # Array Arg
-                arg_dtypes.append("P")
-
-    return arg_dtypes
-
-
 class PyCudaKernelExecutor(KernelExecutorBase):
     """
     An object connecting a kernel to a :mod:`pycuda`
@@ -285,6 +263,27 @@ class PyCudaKernelExecutor(KernelExecutorBase):
 
     def get_wrapper_generator(self):
         return PyCudaExecutionWrapperGenerator()
+
+    def _get_arg_dtypes(self, knl, subkernel_name):
+        from loopy.schedule.tools import get_subkernel_arg_info
+        from loopy.kernel.data import ValueArg
+
+        skai = get_subkernel_arg_info(knl, subkernel_name)
+        arg_dtypes = []
+        for arg in skai.passed_names:
+            if arg in skai.passed_inames:
+                arg_dtypes.append(knl.index_dtype.numpy_dtype)
+            elif arg in skai.passed_temporaries:
+                arg_dtypes.append("P")
+            else:
+                assert arg in knl.arg_dict
+                if isinstance(knl.arg_dict[arg], ValueArg):
+                    arg_dtypes.append(knl.arg_dict[arg].dtype.numpy_dtype)
+                else:
+                    # Array Arg
+                    arg_dtypes.append("P")
+
+        return arg_dtypes
 
     @memoize_method
     def translation_unit_info(self,
@@ -327,7 +326,7 @@ class PyCudaKernelExecutor(KernelExecutorBase):
 
         cuda_functions = Map({name: (src_module
                                      .get_function(name)
-                                     .prepare(_get_arg_dtypes(epoint_knl, name))
+                                     .prepare(self._get_arg_dtypes(epoint_knl, name))
                                      )
                               for name in get_subkernels(epoint_knl)})
         return _KernelInfo(
@@ -382,6 +381,12 @@ class PyCudaKernelExecutor(KernelExecutorBase):
         return translation_unit_info.invoker(
                 translation_unit_info.cuda_functions, stream, allocator, wait_for,
                 out_host, **kwargs)
+
+
+class PyCudaWithPackedArgsKernelExecutor(PyCudaKernelExecutor):
+
+    def _get_arg_dtypes(self, knl, subkernel_name):
+        return ["P"]
 
 # }}}
 
