@@ -58,7 +58,9 @@ def get_random_array(rng, shape: Tuple[int, ...], dtype: np.dtype[Any]):
         return rng.random(shape, dtype=dtype)
 
 
-def test_pycuda_invoker():
+@pytest.mark.parametrize("target", [lp.PyCudaTarget(),
+                                    lp.PyCudaWithPackedArgsTarget()])
+def test_pycuda_invoker(target):
     m = 5
     n = 6
 
@@ -67,7 +69,7 @@ def test_pycuda_invoker():
         """
         y[i, j] = i+j
         """,
-        target=lp.PyCudaTarget())
+        target=target)
 
     knl = lp.split_iname(knl, "i", 5, inner_tag="l.0", outer_tag="g.0")
     evt, (out,) = knl(n=n, m=m)
@@ -78,7 +80,9 @@ def test_pycuda_invoker():
     )
 
 
-def test_gbarrier():
+@pytest.mark.parametrize("target", [lp.PyCudaTarget(),
+                                    lp.PyCudaWithPackedArgsTarget()])
+def test_gbarrier(target):
     n = 5
     knl = lp.make_kernel(
         "{[i, j]: 0<=i,j<n}",
@@ -88,7 +92,7 @@ def test_gbarrier():
         y[j] = (n-j) ** 3
         """,
         seq_dependencies=True,
-        target=lp.PyCudaTarget())
+        target=target)
 
     knl = lp.split_iname(knl, "i", 5, inner_tag="l.0", outer_tag="g.0")
     knl = lp.split_iname(knl, "j", 2, inner_tag="l.0", outer_tag="g.0")
@@ -97,7 +101,9 @@ def test_gbarrier():
     np.testing.assert_array_equal(out.get(), (n-np.arange(n))**3)
 
 
-def test_np_array_input():
+@pytest.mark.parametrize("target", [lp.PyCudaTarget(),
+                                    lp.PyCudaWithPackedArgsTarget()])
+def test_np_array_input(target):
     from numpy.random import default_rng
 
     n = 5
@@ -107,7 +113,7 @@ def test_np_array_input():
         """
         z[i] = 2*x[i] + 3*y[i]
         """,
-        target=lp.PyCudaTarget())
+        target=target)
 
     knl = lp.split_iname(knl, "i", 5, inner_tag="l.0", outer_tag="g.0")
     rng = default_rng(seed=42)
@@ -126,8 +132,10 @@ def test_np_array_input():
         np.testing.assert_allclose(out_np, 2*x_np + 3*y_np)
 
 
+@pytest.mark.parametrize("target", [lp.PyCudaTarget(),
+                                    lp.PyCudaWithPackedArgsTarget()])
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
-def test_global_temporary(dtype):
+def test_global_temporary(target, dtype):
     rng = np.random.default_rng(seed=314)
     x = rng.random(42, dtype=dtype)
 
@@ -137,15 +145,17 @@ def test_global_temporary(dtype):
         <> tmp[i] = sin(x[i])
         z[i] = 2 * tmp[i]
         """,
-        target=lp.PyCudaTarget())
+        target=target)
     knl = lp.set_temporary_address_space(knl, "tmp", lp.AddressSpace.GLOBAL)
 
     evt, (out,) = knl(x=x, out_host=False)
     np.testing.assert_allclose(2*np.sin(x), out.get(), rtol=1e-6)
 
 
+@pytest.mark.parametrize("target", [lp.PyCudaTarget(),
+                                    lp.PyCudaWithPackedArgsTarget()])
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
-def test_multi_entrypoints(dtype):
+def test_multi_entrypoints(target, dtype):
     rng = np.random.default_rng(seed=314)
     x = rng.random(42, dtype=dtype)
 
@@ -155,7 +165,7 @@ def test_multi_entrypoints(dtype):
         z[i] = sin(x[i])
         """,
         name="mysin",
-        target=lp.PyCudaTarget())
+        target=target)
     knl1 = lp.add_dtypes(knl1, {"x": dtype})
 
     knl2 = lp.make_kernel(
@@ -164,7 +174,7 @@ def test_multi_entrypoints(dtype):
         z[i] = cos(x[i])
         """,
         name="mycos",
-        target=lp.PyCudaTarget())
+        target=target)
     knl2 = lp.add_dtypes(knl2, {"x": dtype})
 
     knl = lp.merge([knl1, knl2])
@@ -176,7 +186,9 @@ def test_multi_entrypoints(dtype):
     np.testing.assert_allclose(np.sin(x), out, rtol=1e-6)
 
 
-def test_global_arg_with_offsets():
+@pytest.mark.parametrize("target", [lp.PyCudaTarget(),
+                                    lp.PyCudaWithPackedArgsTarget()])
+def test_global_arg_with_offsets(target):
 
     rng = np.random.default_rng(seed=314)
     x = rng.random(104)
@@ -191,18 +203,20 @@ def test_global_arg_with_offsets():
         [lp.GlobalArg("x,y",
                       offset=lp.auto, shape=lp.auto),
          ...],
-        target=lp.PyCudaTarget())
+        target=target)
     knl = lp.set_temporary_address_space(knl, "tmp", lp.AddressSpace.GLOBAL)
 
     evt, (out,) = knl(x=x, y=y)
     np.testing.assert_allclose(42*np.sin(x) + 1729*np.cos(y), out)
 
 
+@pytest.mark.parametrize("target", [lp.PyCudaTarget(),
+                                    lp.PyCudaWithPackedArgsTarget()])
 @pytest.mark.parametrize("dtype,rtol", [(np.complex64, 1e-6),
                                         (np.complex128, 1e-14),
                                         (np.float32, 1e-6),
                                         (np.float64, 1e-14)])
-def test_sum_of_array(dtype, rtol):
+def test_sum_of_array(target, dtype, rtol):
     # Reported by Mit Kotak
     rng = np.random.default_rng(seed=0)
     knl = lp.make_kernel(
@@ -210,48 +224,75 @@ def test_sum_of_array(dtype, rtol):
         """
         out = sum(i, x[i])
         """,
-        target=lp.PyCudaTarget())
+        target=target)
     x = get_random_array(rng, (42,), np.dtype(dtype))
     evt, (out,) = knl(x=x)
     np.testing.assert_allclose(np.sum(x), out, rtol=rtol)
 
 
+@pytest.mark.parametrize("target", [lp.PyCudaTarget(),
+                                    lp.PyCudaWithPackedArgsTarget()])
 @pytest.mark.parametrize("dtype,rtol", [(np.complex64, 1e-6),
                                         (np.complex128, 1e-14),
                                         (np.float32, 1e-6),
                                         (np.float64, 1e-14)])
-def test_int_pow(dtype, rtol):
+def test_int_pow(target, dtype, rtol):
     rng = np.random.default_rng(seed=0)
     knl = lp.make_kernel(
         "{[i]: 0 <= i < N}",
         """
         out[i] = x[i] ** i
         """,
-        target=lp.PyCudaTarget())
+        target=target)
     x = get_random_array(rng, (10,), np.dtype(dtype))
     evt, (out,) = knl(x=x)
     np.testing.assert_allclose(x ** np.arange(10, dtype=np.int32), out,
                                rtol=rtol)
 
 
+@pytest.mark.parametrize("target", [lp.PyCudaTarget(),
+                                    lp.PyCudaWithPackedArgsTarget()])
 @pytest.mark.parametrize("dtype", [np.complex64, np.complex128,
                                    np.float32, np.float64])
 @pytest.mark.parametrize("func", ["abs", "sqrt",
                                   "sin",  "cos", "tan",
                                   "sinh",  "cosh", "tanh",
                                   "exp", "log", "log10"])
-def test_math_functions(dtype, func):
+def test_math_functions(target, dtype, func):
     rng = np.random.default_rng(seed=0)
     knl = lp.make_kernel(
         "{[i]: 0 <= i < N}",
         f"""
         y[i] = {func}(x[i])
         """,
-        target=lp.PyCudaTarget())
+        target=target)
     x = get_random_array(rng, (42,), np.dtype(dtype))
     _, (out,) = knl(x=x)
     np.testing.assert_allclose(getattr(np, func)(x),
                                out, rtol=1e-6)
+
+
+def test_pycuda_packargs_tgt_avoids_param_space_overflow():
+    from pymbolic.primitives import Sum
+    from loopy.symbolic import parse
+
+    nargs = 1_000
+    rng = np.random.default_rng(32)
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<N}",
+        [lp.Assignment("out[i]",
+                       Sum(tuple(parse(f"arg{i}[i]")
+                                 for i in range(nargs))))],
+        [lp.GlobalArg(",".join(f"arg{i}" for i in range(nargs)) + ",out",
+                      dtype="float64", shape=("N",)),
+         lp.ValueArg("N", dtype="int32")],
+        target=lp.PyCudaWithPackedArgsTarget()
+    )
+
+    args = {f"arg{i}": rng.random(10) for i in range(nargs)}
+
+    evt, (out,) = knl(**args)
+    np.testing.assert_allclose(sum(args.values()), out)
 
 
 if __name__ == "__main__":
