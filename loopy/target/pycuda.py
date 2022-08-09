@@ -273,7 +273,6 @@ class PyCudaTarget(CudaTarget):
 
 
 # {{{ host code: value arg setup
-=======
 
 class PyCudaWithPackedArgsTarget(PyCudaTarget):
 
@@ -292,7 +291,6 @@ class PyCudaWithPackedArgsTarget(PyCudaTarget):
 
     def get_device_ast_builder(self):
         return PyCudaWithPackedArgsCASTBuilder(self)
->>>>>>> upstream/pycuda_tgt
 
 # }}}
 
