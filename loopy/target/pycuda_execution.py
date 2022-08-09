@@ -310,7 +310,6 @@ class PyCudaKernelExecutor(KernelExecutorBase):
 
         return arg_dtypes
 
->>>>>>> upstream/pycuda_tgt
     @memoize_method
     def translation_unit_info(self,
                               arg_to_dtype: Optional[Map[str, LoopyType]] = None
@@ -414,7 +413,6 @@ class PyCudaWithPackedArgsKernelExecutor(PyCudaKernelExecutor):
     def _get_arg_dtypes(self, knl, subkernel_name):
         return ["P"]
 
->>>>>>> upstream/pycuda_tgt
 # }}}
 
 # vim: foldmethod=marker
