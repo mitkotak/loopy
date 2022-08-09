@@ -188,8 +188,6 @@ class ExpressionToPyCudaCExpressionMapper(ExpressionToCudaCExpressionMapper):
                     self.rec(expr.base, type_context, tgt_dtype),
                     self.rec(expr.exponent, type_context))
 
-=======
->>>>>>> upstream/pycuda_tgt
 # }}}
 
 
